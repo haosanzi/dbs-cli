@@ -1,0 +1,3 @@
+[submodule "kata-containers"]
+	path = kata-containers
+	url = git@gitlab.alibaba-inc.com:kangaroo-cloudnative/kata-containers.git

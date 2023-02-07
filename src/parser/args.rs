@@ -230,6 +230,15 @@ pub struct BootArgs {
     )]
     pub initrd_path: Option<String>,
 
+    #[clap(
+        short,
+        long,
+        value_parser,
+        help = "The path of tdshim firmware (Optional)",
+        display_order = 3
+    )]
+    pub firmware_path: Option<String>,
+
     // for kata_rootfs: 'root=/dev/vda1'
     #[clap(
         short,
@@ -237,7 +246,7 @@ pub struct BootArgs {
         value_parser,
         default_value = "console=ttyS0 tty0 reboot=k debug panic=1 pci=off root=/dev/vda1",
         help = "The boot arguments passed to the kernel (Optional)",
-        display_order = 3
+        display_order = 4
     )]
     pub boot_args: String,
 

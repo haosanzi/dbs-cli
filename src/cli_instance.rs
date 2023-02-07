@@ -95,6 +95,7 @@ impl CliInstance {
             // as in crate `dragonball` serial_path will be assigned with a default value,
             // we need a special token to enable the stdio console.
             serial_path: Some(args.create_args.serial_path.clone()),
+            userspace_ioapic_enabled: false,
         };
 
         // check the existence of the serial path (rm it if exist)
@@ -108,6 +109,7 @@ impl CliInstance {
             // unwrap is safe because we have checked kernel_path in the beginning of run_vmm_server
             kernel_path: args.boot_args.kernel_path.unwrap(),
             initrd_path: args.boot_args.initrd_path.clone(),
+            firmware_path: args.boot_args.firmware_path.clone(),
             boot_args: Some(args.boot_args.boot_args.clone()),
         };
 
