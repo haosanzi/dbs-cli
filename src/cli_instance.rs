@@ -19,8 +19,8 @@ use vmm_sys_util::eventfd::EventFd;
 
 use dragonball::{
     api::v1::{
-        BlockDeviceConfigInfo, BootSourceConfig, InstanceInfo, VmmRequest, VmmResponse,
-        VsockDeviceConfigInfo,
+        BlockDeviceConfigInfo, BootSourceConfig, ConfidentialVmType, InstanceInfo, VmmRequest,
+        VmmResponse, VsockDeviceConfigInfo,
     },
     vm::{CpuTopology, VmConfigInfo},
 };
@@ -53,16 +53,16 @@ impl VMMComm for CliInstance {
 }
 impl CliInstance {
     pub fn new(id: &str) -> Self {
-        let vmm_shared_info = Arc::new(RwLock::new(InstanceInfo::new(
-            String::from(id),
-            DRAGONBALL_VERSION.to_string(),
-        )));
+        let mut vmm_shared_info =
+            InstanceInfo::new(String::from(id), DRAGONBALL_VERSION.to_string());
+
+        vmm_shared_info.confidential_vm_type = Some(ConfidentialVmType::TDX);
 
         let to_vmm_fd = EventFd::new(libc::EFD_NONBLOCK)
             .unwrap_or_else(|_| panic!("Failed to create eventfd for vmm {}", id));
 
         CliInstance {
-            vmm_shared_info,
+            vmm_shared_info: Arc::new(RwLock::new(vmm_shared_info)),
             to_vmm: None,
             from_vmm: None,
             to_vmm_fd,
@@ -95,7 +95,7 @@ impl CliInstance {
             // as in crate `dragonball` serial_path will be assigned with a default value,
             // we need a special token to enable the stdio console.
             serial_path: Some(args.create_args.serial_path.clone()),
-            userspace_ioapic_enabled: false,
+            userspace_ioapic_enabled: true,
         };
 
         // check the existence of the serial path (rm it if exist)
