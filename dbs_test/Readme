@@ -1,0 +1,6 @@
+sudo socat "stdin,raw,echo=0,escape=0x11" unix-connect:/tmp/dbs
+
+
+nc -U /tmp/vsock.sock 
+
+connect 1024
