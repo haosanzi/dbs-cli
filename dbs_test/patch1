@@ -1,0 +1,223 @@
+diff --git a/crates/dbs-tdx/Cargo.toml b/crates/dbs-tdx/Cargo.toml
+index fbfd582..c105b10 100644
+--- a/crates/dbs-tdx/Cargo.toml
++++ b/crates/dbs-tdx/Cargo.toml
+@@ -17,6 +17,7 @@ kvm-bindings = { version = "0.6.0", features = ["fam-wrappers"] }
+ vmm-sys-util = "0.11.0"
+ vm-memory = "0.9.0"
+ log = "0.4.14"
++uuid = "1.3.0"
+ 
+ [dev-dependencies]
+ serde_json = "1.0.9"
+diff --git a/crates/dbs-tdx/src/td_shim/metadata.rs b/crates/dbs-tdx/src/td_shim/metadata.rs
+index e5fb908..811c3dc 100644
+--- a/crates/dbs-tdx/src/td_shim/metadata.rs
++++ b/crates/dbs-tdx/src/td_shim/metadata.rs
+@@ -5,27 +5,31 @@
+ use std::fs::File;
+ use std::io::{Read, Seek, SeekFrom};
+ use thiserror::Error;
++use std::str::FromStr;
++use std::convert::TryInto;
++use uuid::Uuid;
+ /// TDVF related errors.
+ #[derive(Error, Debug)]
+ pub enum TdvfError {
+-    /// Failed to read TDVF descriptor.
+     #[error("Failed read TDVF descriptor: {0}")]
+     ReadDescriptor(#[source] std::io::Error),
+-    /// Failed to read TDVF descriptor offset.
+     #[error("Failed read TDVF descriptor offset: {0}")]
+     ReadDescriptorOffset(#[source] std::io::Error),
+-    /// Invalid descriptor signature.
++    #[error("Failed read GUID table: {0}")]
++    ReadGuidTable(#[source] std::io::Error),
+     #[error("Invalid descriptor signature")]
+     InvalidDescriptorSignature,
+-    /// Invalid descriptor size.
+     #[error("Invalid descriptor size")]
+     InvalidDescriptorSize,
+-    /// Invalid descriptor version.
+     #[error("Invalid descriptor version")]
+     InvalidDescriptorVersion,
++    #[error("Failed to create Uuid: {0}")]
++    UuidCreation(#[source] uuid::Error),
+ }
++
+ /// TDVF_DESCRIPTOR
+ #[repr(packed)]
++#[derive(Default)]
+ pub struct TdvfDescriptor {
+     signature: [u8; 4],
+     length: u32,
+@@ -50,7 +54,7 @@ pub struct TdvfSection {
+     pub attributes: u32,
+ }
+ #[repr(u32)]
+-#[derive(Clone, Copy, Debug, PartialEq)]
++#[derive(Clone, Copy, Debug, Default, PartialEq)]
+ /// TDVF Section Type
+ pub enum TdvfSectionType {
+     /// BFV section type
+@@ -68,31 +72,101 @@ pub enum TdvfSectionType {
+     /// Payload Param
+     PayloadParam,
+     /// Reserved
++    #[default]
+     Reserved = 0xffffffff,
+ }
+-impl Default for TdvfSectionType {
+-    fn default() -> Self {
+-        TdvfSectionType::Reserved
++
++const TABLE_FOOTER_GUID: &str = "96b582de-1fb2-45f7-baea-a366c55a082d";
++const TDVF_METADATA_OFFSET_GUID: &str = "e47a6535-984a-4798-865e-4685a7bf8ec2";
++
++fn tdvf_descriptor_offset(file: &mut File) -> Result<(SeekFrom, bool), TdvfError> {
++    // Let's first try to identify the presence of the table footer GUID
++    file.seek(SeekFrom::End(-0x30))
++        .map_err(TdvfError::ReadGuidTable)?;
++    let mut table_footer_guid: [u8; 16] = [0; 16];
++    file.read_exact(&mut table_footer_guid)
++        .map_err(TdvfError::ReadGuidTable)?;
++    let uuid =
++        Uuid::from_slice_le(table_footer_guid.as_slice()).map_err(TdvfError::UuidCreation)?;
++    let expected_uuid = Uuid::from_str(TABLE_FOOTER_GUID).map_err(TdvfError::UuidCreation)?;
++    if uuid == expected_uuid {
++        // Retrieve the table size
++        file.seek(SeekFrom::End(-0x32))
++            .map_err(TdvfError::ReadGuidTable)?;
++        let mut table_size: [u8; 2] = [0; 2];
++        file.read_exact(&mut table_size)
++            .map_err(TdvfError::ReadGuidTable)?;
++        let table_size = u16::from_le_bytes(table_size) as usize;
++        let mut table: Vec<u8> = vec![0; table_size];
++
++        // Read the entire table
++        file.seek(SeekFrom::End(-(table_size as i64 + 0x20)))
++            .map_err(TdvfError::ReadGuidTable)?;
++        file.read_exact(table.as_mut_slice())
++            .map_err(TdvfError::ReadGuidTable)?;
++
++        // Let's start from the top and go backward down the table.
++        // We start after the footer GUID and the table length.
++        let mut offset = table_size - 18;
++
++        while offset >= 18 {
++            let entry_uuid = Uuid::from_slice_le(&table[offset - 16..offset])
++                .map_err(TdvfError::UuidCreation)?;
++            let entry_size =
++                u16::from_le_bytes(table[offset - 18..offset - 16].try_into().unwrap()) as usize;
++            // Avoid going through an infinite loop if the entry size is 0
++            if entry_size == 0 {
++                break;
++            }
++
++            offset -= entry_size;
++
++            let expected_uuid =
++                Uuid::from_str(TDVF_METADATA_OFFSET_GUID).map_err(TdvfError::UuidCreation)?;
++            if entry_uuid == expected_uuid && entry_size == 22 {
++                return Ok((
++                    SeekFrom::End(
++                        -(u32::from_le_bytes(table[offset..offset + 4].try_into().unwrap()) as i64),
++                    ),
++                    true,
++                ));
++            }
++        }
+     }
+-}
+-/// Parse tdx section.
+-///
+-/// #Arguments
+-/// * `file` - The tdshim image file.
+-pub fn parse_tdvf_sections(file: &mut File) -> std::result::Result<Vec<TdvfSection>, TdvfError> {
++
++    // If we end up here, this means the firmware doesn't support the new way
++    // of exposing the TDVF descriptor offset through the table of GUIDs.
++    // That's why we fallback onto the deprecated method.
++
+     // The 32-bit offset to the TDVF metadata is located 32 bytes from
+     // the end of the file.
+     // See "TDVF Metadata Pointer" in "TDX Virtual Firmware Design Guide
+     file.seek(SeekFrom::End(-0x20))
+         .map_err(TdvfError::ReadDescriptorOffset)?;
++
+     let mut descriptor_offset: [u8; 4] = [0; 4];
+     file.read_exact(&mut descriptor_offset)
+         .map_err(TdvfError::ReadDescriptorOffset)?;
+-    let descriptor_offset = u32::from_le_bytes(descriptor_offset) as u64;
+-    file.seek(SeekFrom::Start(descriptor_offset))
++
++    Ok((
++        SeekFrom::Start(u32::from_le_bytes(descriptor_offset) as u64),
++        false,
++    ))
++}
++
++/// Parse tdx section.
++///
++/// #Arguments
++/// * `file` - The tdshim image file.
++pub fn parse_tdvf_sections(file: &mut File) -> std::result::Result<Vec<TdvfSection>, TdvfError> {
++    
++    let (descriptor_offset, _guid_found) = tdvf_descriptor_offset(file)?;
++
++    file.seek(descriptor_offset)
+         .map_err(TdvfError::ReadDescriptor)?;
+-    let mut descriptor: TdvfDescriptor = unsafe { std::mem::zeroed() };
+-    // Safe as we read exactly the size of the descriptor header
++
++    let mut descriptor: TdvfDescriptor = Default::default();
++    // SAFETY: we read exactly the size of the descriptor header
+     file.read_exact(unsafe {
+         std::slice::from_raw_parts_mut(
+             &mut descriptor as *mut _ as *mut u8,
+@@ -100,21 +174,26 @@ pub fn parse_tdvf_sections(file: &mut File) -> std::result::Result<Vec<TdvfSecti
+         )
+     })
+     .map_err(TdvfError::ReadDescriptor)?;
+-    if &descriptor.signature != b"TDVF" {
+-        return Err(TdvfError::InvalidDescriptorSignature);
+-    }
++
++    //if &descriptor.signature != b"TDVF" {
++    //    return Err(TdvfError::InvalidDescriptorSignature);
++    //}
++
+     if descriptor.length as usize
+         != std::mem::size_of::<TdvfDescriptor>()
+             + std::mem::size_of::<TdvfSection>() * descriptor.num_sections as usize
+     {
+         return Err(TdvfError::InvalidDescriptorSize);
+     }
++
+     if descriptor.version != 1 {
+         return Err(TdvfError::InvalidDescriptorVersion);
+     }
++
+     let mut sections = Vec::new();
+     sections.resize_with(descriptor.num_sections as usize, TdvfSection::default);
+-    // Safe as we read exactly the advertised sections
++
++    // SAFETY: we read exactly the advertised sections
+     file.read_exact(unsafe {
+         std::slice::from_raw_parts_mut(
+             sections.as_mut_ptr() as *mut u8,
+@@ -122,6 +201,7 @@ pub fn parse_tdvf_sections(file: &mut File) -> std::result::Result<Vec<TdvfSecti
+         )
+     })
+     .map_err(TdvfError::ReadDescriptor)?;
++
+     Ok(sections)
+ }
+ #[cfg(test)]
+@@ -138,4 +218,4 @@ mod tests {
+             assert_ne!(r#type, TdvfSectionType::Reserved);
+         }
+     }
+-}
+\ No newline at end of file
++}
