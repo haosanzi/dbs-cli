@@ -56,7 +56,7 @@ impl CliInstance {
         let mut vmm_shared_info =
             InstanceInfo::new(String::from(id), DRAGONBALL_VERSION.to_string());
 
-        vmm_shared_info.confidential_vm_type = Some(ConfidentialVmType::TDX);
+        vmm_shared_info.confidential_vm_type = Some(ConfidentialVmType::SEV);
 
         let to_vmm_fd = EventFd::new(libc::EFD_NONBLOCK)
             .unwrap_or_else(|_| panic!("Failed to create eventfd for vmm {}", id));
