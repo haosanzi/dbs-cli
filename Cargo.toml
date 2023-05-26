@@ -6,7 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dragonball = { path = './kata-containers/src/dragonball', features = ["userspace-ioapic", "virtio-blk", "virtio-vsock", "hotplug", "dbs-upcall", "tdx"] }
+dragonball = { path = "../inner-kata-containers/src/dragonball", features = ["virtio-blk", "virtio-vsock", "hotplug", "dbs-upcall"] }
+# dragonball = { path = './kata-containers/src/dragonball', features = ["userspace-ioapic", "virtio-blk", "virtio-vsock", "hotplug", "dbs-upcall", "tdx"] }
 clap = { version = "4.0.27", features = ["derive"] }
 serde = "1.0.27"
 serde_derive = "1.0.27"
