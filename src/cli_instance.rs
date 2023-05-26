@@ -95,7 +95,7 @@ impl CliInstance {
             // as in crate `dragonball` serial_path will be assigned with a default value,
             // we need a special token to enable the stdio console.
             serial_path: Some(args.create_args.serial_path.clone()),
-            userspace_ioapic_enabled: true,
+            // userspace_ioapic_enabled: true,
         };
 
         // check the existence of the serial path (rm it if exist)
