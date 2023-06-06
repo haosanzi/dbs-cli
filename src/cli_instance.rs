@@ -13,16 +13,17 @@ use std::{
 };
 
 use crate::vmm_comm_trait::VMMComm;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use seccompiler::BpfProgram;
 use vmm_sys_util::eventfd::EventFd;
 
 use dragonball::{
     api::v1::{
-        BlockDeviceConfigInfo, BootSourceConfig, ConfidentialVmType, InstanceInfo, VmmRequest,
-        VmmResponse, VsockDeviceConfigInfo,
+        BlockDeviceConfigInfo, BootSourceConfig, ConfidentialVmType, InstanceInfo, VmmActionError,
+        VmmRequest, VmmResponse, VsockDeviceConfigInfo,
     },
     vm::{CpuTopology, VmConfigInfo},
+    StartMicroVmError,
 };
 
 use crate::parser::DBSArgs;
@@ -71,11 +72,30 @@ impl CliInstance {
     }
 
     pub fn run_vmm_server(&self, args: DBSArgs) -> Result<()> {
+        use sev::{cached_chain, firmware::host::Firmware, launch::sev::*, session::Session};
         if args.boot_args.kernel_path.is_none() || args.boot_args.rootfs_args.rootfs.is_none() {
-            return Err(anyhow!(
-                "kernel path or rootfs path cannot be None when creating the VM"
-            ));
+            bail!("kernel path or rootfs path cannot be None when creating the VM");
         }
+
+        // Host
+        // 打开 sev, 查询固件信息
+        let mut sev = Firmware::open().unwrap();
+        let platform_status = sev.platform_status().unwrap();
+        // dbg!(&platform_status);
+        let build = platform_status.build;
+        // 导出证书链, 这里是使用缓存的证书
+        let chain = cached_chain::get().expect(
+            r#"could not find certificate chain
+            export with: sevctl export --full ~/.cache/amd-sev/chain"#,
+        );
+
+        // 租户
+        // 生成策略, 开始建立与远程 PSP 的安全通道
+        let mut policy = Policy::default();
+        policy.flags.set(PolicyFlags::ENCRYPTED_STATE, true);
+        let session = Session::try_from(policy).unwrap();
+        // 从 Host 获取到证书链
+        let start = Box::new(session.start(chain).unwrap()); // Start 是一个可序列化的结构
 
         // configuration
         let vm_config = VmConfigInfo {
@@ -94,14 +114,17 @@ impl CliInstance {
             mem_size_mib: args.create_args.mem_size,
             // as in crate `dragonball` serial_path will be assigned with a default value,
             // we need a special token to enable the stdio console.
-            serial_path: Some(args.create_args.serial_path.clone()),
+            serial_path: args.create_args.serial_path.clone(),
             // userspace_ioapic_enabled: true,
+            sev_start: Some(start),
         };
 
         // check the existence of the serial path (rm it if exist)
-        let serial_file = Path::new(&args.create_args.serial_path);
-        if args.create_args.serial_path != *"stdio" && serial_file.exists() {
-            std::fs::remove_file(serial_file).unwrap();
+        if let Some(serial_path) = &args.create_args.serial_path {
+            let serial_path = Path::new(serial_path);
+            if serial_path.exists() {
+                std::fs::remove_file(serial_path).unwrap();
+            }
         }
 
         // boot source
@@ -151,8 +174,24 @@ impl CliInstance {
         }
 
         // start micro-vm
-        self.instance_start().expect("failed to start micro-vm");
+        let first_start = self.instance_start_raw();
+        dbg!(&first_start);
 
+        let measurement = {
+            let Ok(response) = first_start else {
+                panic!();
+            };
+            let response = *response;
+            let Err(VmmActionError::StartMicroVm(StartMicroVmError::SevMeasured(measurement))) = response else {
+                panic!()
+            };
+            measurement
+        };
+        let session = session.verify(&[], build, measurement).unwrap();
+        const CODE: &[u8; 16] = &[0; 16];
+        let secret = session.secret(HeaderFlags::default(), CODE).unwrap();
+
+        self.instance_sev_second_start(secret).unwrap();
         Ok(())
     }
 }

@@ -192,7 +192,7 @@ pub struct CreateArgs {
         help = "The serial path used to communicate with VM",
         display_order = 2
     )]
-    pub serial_path: String,
+    pub serial_path: Option<String>,
 
     // The path to a vsock socket file
     // FIXME: add more params:

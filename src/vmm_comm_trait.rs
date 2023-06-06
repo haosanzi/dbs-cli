@@ -1,4 +1,5 @@
 use std::sync::mpsc::{Receiver, Sender};
+use sev::launch::sev::Secret;
 use vmm_sys_util::eventfd::EventFd;
 
 use anyhow::{anyhow, Context, Result};
@@ -31,6 +32,17 @@ pub trait VMMComm {
                 Ok(vmm_data) => Ok(vmm_data),
                 Err(vmm_action_error) => Err(anyhow!("vmm action error: {:?}", vmm_action_error)),
             },
+            Err(e) => Err(e),
+        }
+    }
+
+    fn handle_request_raw(
+        &self,
+        req: Request,
+    ) -> std::result::Result<Box<std::result::Result<VmmData, VmmActionError>>, anyhow::Error> {
+        let Request::Sync(vmm_action) = req;
+        match self.send_request(vmm_action) {
+            Ok(vmm_outcome) => Ok(vmm_outcome),
             Err(e) => Err(e),
         }
     }
@@ -96,6 +108,18 @@ pub trait VMMComm {
 
     fn instance_start(&self) -> Result<()> {
         self.handle_request(Request::Sync(VmmAction::StartMicroVm))
+            .context("Failed to start MicroVm")?;
+        Ok(())
+    }
+
+    fn instance_start_raw(
+        &self,
+    ) -> std::result::Result<Box<std::result::Result<VmmData, VmmActionError>>, anyhow::Error> {
+        self.handle_request_raw(Request::Sync(VmmAction::StartMicroVm))
+    }
+
+    fn instance_sev_second_start(&self, secret: Secret) -> Result<()> {
+        self.handle_request(Request::Sync(VmmAction::StartMicroVmWithSevSecret(secret)))
             .context("Failed to start MicroVm")?;
         Ok(())
     }
