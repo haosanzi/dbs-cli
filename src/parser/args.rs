@@ -188,7 +188,6 @@ pub struct CreateArgs {
         short,
         long,
         value_parser,
-        default_value = "stdio",
         help = "The serial path used to communicate with VM",
         display_order = 2
     )]

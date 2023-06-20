@@ -1,0 +1,17 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "clean sock (SEV)",
+            "type": "shell",
+            "command": "rm -f ${workspaceFolder}/sev_test/tmp.vsock.sock && rm -f ${workspaceFolder}/sev_test/tmp.serial.sock",
+            "problemMatcher": []
+        },
+        {
+            "label": "clean sock",
+            "type": "shell",
+            "command": "rm -f ${workspaceFolder}/dbs_test/tmp.vsock.sock && rm -f ${workspaceFolder}/dbs_test/tmp.serial.sock",
+            "problemMatcher": []
+        }
+    ]
+}

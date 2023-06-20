@@ -1,0 +1,85 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "SEV",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=dbs-cli",
+                    "--package=dbs-cli"
+                ],
+                "filter": {
+                    "name": "dbs-cli",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--log-file", "${workspaceFolder}/sev_test/dbs-cli.log",
+                "--log-level", "debug",
+                // "--serial-path", "${workspaceFolder}/sev_test/tmp.serial.sock",
+                "--kernel-path", "${workspaceFolder}/sev_test/bzImage",
+                "--firmware-path", "${workspaceFolder}/sev_test/final-pe.bin",
+                "--rootfs", "${workspaceFolder}/sev_test/rootfs.alpine",
+                "--boot-args", "root=/dev/sda1 systemd.unit=kata-containers.target agent.log=debug agent.log_vport=1025",
+                "--vsock", "${workspaceFolder}/sev_test/tmp.vsock.sock",
+                "create"
+            ],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "clean sock (SEV)"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'dbs-cli'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=dbs-cli",
+                    "--package=dbs-cli"
+                ],
+                "filter": {
+                    "name": "dbs-cli",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--log-file", "${workspaceFolder}/dbs_test/dbs-cli.log",
+                "--log-level", "debug",
+                // "--serial-path", "${workspaceFolder}/dbs_test/tmp.serial.sock",
+                "--kernel-path", "${workspaceFolder}/dbs_test/bzImage",
+                "--firmware-path", "${workspaceFolder}/dbs_test/final-boot-kernel.bin",
+                "--rootfs", "${workspaceFolder}/dbs_test/rootfs.alpine",
+                "--boot-args", "root=/dev/sda1 systemd.unit=kata-containers.target agent.log=debug agent.log_vport=1025",
+                "--vsock", "${workspaceFolder}/dbs_test/tmp.vsock.sock",
+                "create"
+            ],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "clean sock"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'dbs-cli'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=dbs-cli",
+                    "--package=dbs-cli"
+                ],
+                "filter": {
+                    "name": "dbs-cli",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
