@@ -20,13 +20,15 @@
                 }
             },
             "args": [
+                "--mem-size", "2048",
                 "--log-file", "${workspaceFolder}/sev_test/dbs-cli.log",
-                "--log-level", "debug",
+                "--log-level", "trace",
                 // "--serial-path", "${workspaceFolder}/sev_test/tmp.serial.sock",
                 "--kernel-path", "${workspaceFolder}/sev_test/bzImage",
-                "--firmware-path", "${workspaceFolder}/sev_test/final-pe.bin",
+                "--firmware-path", "${workspaceFolder}/sev_test/final-wzy-int3.bin",
                 "--rootfs", "${workspaceFolder}/sev_test/rootfs.alpine",
-                "--boot-args", "root=/dev/sda1 systemd.unit=kata-containers.target agent.log=debug agent.log_vport=1025",
+                "--boot-args", "console=ttyS0 root=/dev/vda1",
+                "--vcpu", "1",
                 "--vsock", "${workspaceFolder}/sev_test/tmp.vsock.sock",
                 "create"
             ],
@@ -36,7 +38,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'dbs-cli'",
+            "name": "普通 VM",
             "cargo": {
                 "args": [
                     "build",
@@ -49,37 +51,18 @@
                 }
             },
             "args": [
-                "--log-file", "${workspaceFolder}/dbs_test/dbs-cli.log",
+                "--log-file", "${workspaceFolder}/sev_test/dbs-cli.log",
                 "--log-level", "debug",
-                // "--serial-path", "${workspaceFolder}/dbs_test/tmp.serial.sock",
-                "--kernel-path", "${workspaceFolder}/dbs_test/bzImage",
-                "--firmware-path", "${workspaceFolder}/dbs_test/final-boot-kernel.bin",
-                "--rootfs", "${workspaceFolder}/dbs_test/rootfs.alpine",
-                "--boot-args", "root=/dev/sda1 systemd.unit=kata-containers.target agent.log=debug agent.log_vport=1025",
-                "--vsock", "${workspaceFolder}/dbs_test/tmp.vsock.sock",
+                // "--serial-path", "${workspaceFolder}/sev_test/tmp.serial.sock",
+                "--kernel-path", "${workspaceFolder}/sev_test/vmlinux-daily-20220912-231412",
+                // "--firmware-path", "${workspaceFolder}/sev_test/final-pe.bin",
+                "--rootfs", "${workspaceFolder}/sev_test/rootfs.alpine",
+                "--boot-args", "root=/dev/sda1 console=ttyS0",
+                "--vsock", "${workspaceFolder}/sev_test/tmp.vsock.sock",
                 "create"
             ],
             "cwd": "${workspaceFolder}",
-            "preLaunchTask": "clean sock"
+            "preLaunchTask": "clean sock (SEV)"
         },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in executable 'dbs-cli'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--bin=dbs-cli",
-                    "--package=dbs-cli"
-                ],
-                "filter": {
-                    "name": "dbs-cli",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        }
     ]
 }

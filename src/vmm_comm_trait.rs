@@ -1,5 +1,4 @@
 use std::sync::mpsc::{Receiver, Sender};
-use sev::launch::sev::Secret;
 use vmm_sys_util::eventfd::EventFd;
 
 use anyhow::{anyhow, Context, Result};
@@ -10,7 +9,7 @@ use dragonball::{
         BlockDeviceConfigInfo, BootSourceConfig, VmmAction, VmmActionError, VmmData, VmmRequest,
         VmmResponse, VsockDeviceConfigInfo,
     },
-    vm::VmConfigInfo,
+    vm::VmConfigInfo, sev::sev::SevSecretsInjection,
 };
 
 pub enum Request {
@@ -112,14 +111,13 @@ pub trait VMMComm {
         Ok(())
     }
 
-    fn instance_start_raw(
-        &self,
-    ) -> std::result::Result<Box<std::result::Result<VmmData, VmmActionError>>, anyhow::Error> {
-        self.handle_request_raw(Request::Sync(VmmAction::StartMicroVm))
+    fn instance_start_sev(&self) -> Result<VmmData> {
+        self.handle_request(Request::Sync(VmmAction::StartSevMicroVm))
+            .context("Failed to start MicroVm")
     }
 
-    fn instance_sev_second_start(&self, secret: Secret) -> Result<()> {
-        self.handle_request(Request::Sync(VmmAction::StartMicroVmWithSevSecret(secret)))
+    fn inejct_sev_secrets(&self, injection: SevSecretsInjection) -> Result<()> {
+        self.handle_request(Request::Sync(VmmAction::InjectSevSecrets(injection)))
             .context("Failed to start MicroVm")?;
         Ok(())
     }

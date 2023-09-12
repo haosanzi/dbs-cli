@@ -13,16 +13,17 @@ use std::{
 };
 
 use crate::vmm_comm_trait::VMMComm;
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use seccompiler::BpfProgram;
 use vmm_sys_util::eventfd::EventFd;
 
 use dragonball::{
     api::v1::{
-        BlockDeviceConfigInfo, BootSourceConfig, ConfidentialVmType, InstanceInfo, VmmActionError,
+        BlockDeviceConfigInfo, BootSourceConfig, InstanceInfo, TeeType, VmmActionError, VmmData,
         VmmRequest, VmmResponse, VsockDeviceConfigInfo,
     },
-    vm::{CpuTopology, VmConfigInfo},
+    sev::sev::{SecretWithGpa, SevSecretsInjection},
+    vm::{CpuTopology, SevStart, VmConfigInfo},
     StartMicroVmError,
 };
 
@@ -57,7 +58,7 @@ impl CliInstance {
         let mut vmm_shared_info =
             InstanceInfo::new(String::from(id), DRAGONBALL_VERSION.to_string());
 
-        vmm_shared_info.confidential_vm_type = Some(ConfidentialVmType::SEV);
+        vmm_shared_info.confidential_vm_type = Some(TeeType::SEV);
 
         let to_vmm_fd = EventFd::new(libc::EFD_NONBLOCK)
             .unwrap_or_else(|_| panic!("Failed to create eventfd for vmm {}", id));
@@ -72,30 +73,24 @@ impl CliInstance {
     }
 
     pub fn run_vmm_server(&self, args: DBSArgs) -> Result<()> {
-        use sev::{cached_chain, firmware::host::Firmware, launch::sev::*, session::Session};
+        use dragonball::vm::SevSecureChannel;
+        use sev::{cached_chain, launch::sev::*, session::Session};
+
         if args.boot_args.kernel_path.is_none() || args.boot_args.rootfs_args.rootfs.is_none() {
             bail!("kernel path or rootfs path cannot be None when creating the VM");
         }
 
-        // Host
-        // 打开 sev, 查询固件信息
-        let mut sev = Firmware::open().unwrap();
-        let platform_status = sev.platform_status().unwrap();
-        // dbg!(&platform_status);
-        let build = platform_status.build;
-        // 导出证书链, 这里是使用缓存的证书
+        // 使用目标机器的证书, 这里为预先缓存的
         let chain = cached_chain::get().expect(
             r#"could not find certificate chain
             export with: sevctl export --full ~/.cache/amd-sev/chain"#,
         );
 
-        // 租户
-        // 生成策略, 开始建立与远程 PSP 的安全通道
         let mut policy = Policy::default();
-        policy.flags.set(PolicyFlags::ENCRYPTED_STATE, true);
+        policy.flags.set(PolicyFlags::NO_DEBUG, true);
+        // policy.flags.set(PolicyFlags::ENCRYPTED_STATE, true);
         let session = Session::try_from(policy).unwrap();
-        // 从 Host 获取到证书链
-        let start = Box::new(session.start(chain).unwrap()); // Start 是一个可序列化的结构
+        let start = Box::new(session.start(chain).unwrap());
 
         // configuration
         let vm_config = VmConfigInfo {
@@ -116,7 +111,14 @@ impl CliInstance {
             // we need a special token to enable the stdio console.
             serial_path: args.create_args.serial_path.clone(),
             // userspace_ioapic_enabled: true,
-            sev_start: Some(start),
+            sev_start: SevStart::new(
+                true,
+                start.policy,
+                Some(Box::new(SevSecureChannel {
+                    cert: start.cert,
+                    session: start.session,
+                })),
+            ),
         };
 
         // check the existence of the serial path (rm it if exist)
@@ -173,25 +175,23 @@ impl CliInstance {
                 .expect("failed to set vsock socket path");
         }
 
-        // start micro-vm
-        let first_start = self.instance_start_raw();
-        dbg!(&first_start);
+        // start sev micro-vm
+        let response = self.instance_start_sev().unwrap();
+        let VmmData::SevMeasurement(msr) = response else { panic!()};
+        // println!("cmdline: {:?}", msr.cmdline.as_slice());
+        // println!("tdhob: {:?}", msr.tdhob.as_slice());
 
-        let measurement = {
-            let Ok(response) = first_start else {
-                panic!();
-            };
-            let response = *response;
-            let Err(VmmActionError::StartMicroVm(StartMicroVmError::SevMeasured(measurement))) = response else {
-                panic!()
-            };
-            measurement
-        };
-        let session = session.verify(&[], build, measurement).unwrap();
-        const CODE: &[u8; 16] = &[0; 16];
+        let session = session.verify(&[], msr.build, msr.measurement).unwrap();
+
+        const CODE: &[u8; 16] = &[2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53];
         let secret = session.secret(HeaderFlags::default(), CODE).unwrap();
 
-        self.instance_sev_second_start(secret).unwrap();
+        self.inejct_sev_secrets(SevSecretsInjection {
+            secrets: vec![SecretWithGpa { secret, gpa: None }],
+            resume_vm: true,
+        })
+        .unwrap();
+
         Ok(())
     }
 }

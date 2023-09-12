@@ -1,0 +1,49 @@
+16
+32
+16
+32
+b1
+64
+INFO - Starting RUST Based TdShim boot_fv - 0xffcb0000, Top of stack - 0xff062000, init_vp - 0x0, info - 0xf35a 
+INFO - setup_exception_handlers done
+INFO - Heap allocator init done: 0xff062000..0xff082000
+INFO - PhitHob:
+INFO -   version                - 0x9
+INFO -   boot_mode              - 0x0
+INFO -   efi_memory_top         - 0x0000000000000000
+INFO -   efi_memory_bottom      - 0x0000000000000000
+INFO -   efi_free_memory_top    - 0x0000000000000000
+INFO -   efi_free_memory_bottom - 0x0000000000000000
+INFO -   efi_end_of_hob_list    - 0x0000000000800228
+INFO - ResourceDescription type: 0x00000000 start: 0x0000000000000000 length: 0x0000000080000000 attribute: (0x00000007)
+INFO - ResourceDescription type: 0x00000000 start: 0x00000000ff000000 length: 0x0000000001000000 attribute: (0x00000007)
+INFO - ResourceDescription type: 0x00000001 start: 0x00000000c0000000 length: 0x000000003f000000 attribute: (0x00000403)
+INFO - Hob:
+INFO -   header.type            - 0x4
+INFO -   header.length          - 0x28
+INFO - Hob:
+INFO -   header.type            - 0x4
+INFO -   header.length          - 0xf0
+INFO - Hob:
+INFO -   header.type            - 0x4
+INFO -   header.length          - 0x40
+INFO - Page fault: 000000007FEDC000
+INFO - RFLAG: 0000000000010087
+INFO - CS:    0000000000000038
+INFO - RIP:   000000000010F4D5
+INFO - CODE:  0000000000000002
+INFO - RAX:   0000000000000000
+INFO - RCX:   00000000FF062270
+INFO - RDX:   000000007D49B001
+INFO - RDI:   00000000FF062240
+INFO - RSI:   0000000000000001
+INFO - R8:    00000000FF062201
+INFO - R9:    0000000100000001
+INFO - R10:   000000000010A095
+INFO - R11:   0000000000000013
+INFO - RBX:   0000000080000000
+INFO - RBP:   0000000080000000
+INFO - R12:   0000000080000000
+INFO - R13:   000000007FEFE000
+INFO - R14:   000000007FDDC000
+INFO - R15:   000000007FEDC000

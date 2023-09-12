@@ -1,0 +1,3 @@
+k:kvm_mtrr_set_msr {
+ printf("msr %x data %8llx\n", arg1, (uint64)arg2);
+}
