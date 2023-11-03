@@ -35,6 +35,9 @@ pub struct DBSArgs {
 
     #[clap(flatten)]
     pub update_args: UpdateArgs,
+
+    #[clap(flatten)]
+    pub security_info_args: Option<SecurityInfoArgs>,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -263,4 +266,77 @@ pub struct UpdateArgs {
         display_order = 2
     )]
     pub vcpu_resize: Option<usize>,
+}
+
+#[derive(Args, Debug, Deserialize, Serialize, Clone)]
+#[clap(arg_required_else_help = true)]
+pub struct SecurityInfoArgs {
+    #[clap(
+        long,
+        value_parser,
+        default_value_t = true,
+        help = "SEV pre attestation enable [default: true]",
+        display_order = 1
+    )]
+    pub guest_pre_attestation: bool,
+
+    #[clap(
+        short = 'g',
+        long,
+        value_parser,
+        default_value = "KEYSET-1",
+        help = "guest_pre_attestation_keyset",
+        display_order = 1
+    )]
+    pub guest_pre_attestation_keyset: Option<String>,
+
+    #[clap(
+        short = 'o',
+        long,
+        value_parser,
+        default_value = "http://30.97.44.97:44444",
+        help = "SEV pre attestation proxy (Optional)",
+        display_order = 2
+    )]
+    pub guest_pre_attestation_proxy: Option<String>,
+
+    #[clap(
+        short = 'd',
+        long,
+        value_parser,
+        default_value = "e6f5a162-d67f-4750-a67c-5d065f2a9910",
+        help = "SEV pre attestation secret guid",
+        display_order = 3
+    )]
+    pub guest_pre_attestation_secret_guid: Option<String>,
+
+    #[clap(
+        short = 't',
+        long,
+        value_parser,
+        default_value = "bundle",
+        help = "SEV pre attestation secret type (Optional)",
+        display_order = 4
+    )]
+    pub guest_pre_attestation_secret_type: Option<String>,
+
+    #[clap(
+        short = 'c',
+        long,
+        value_parser,
+        default_value = "/home/yanrong/inner-kata-containers/src/libs/aeb/src/testdata/cert_chain.cert",
+        help = "SEV pre attestation cert chain path",
+        display_order = 5
+    )]
+    pub sev_cert_chain_path: Option<String>,
+
+    #[clap(
+        short = 'p',
+        long,
+        value_parser,
+        default_value_t = 0,
+        help = "SEV pre attestation guest policy",
+        display_order = 6
+    )]
+    pub sev_guest_policy: u32,
 }

@@ -74,23 +74,27 @@ impl CliInstance {
 
     pub fn run_vmm_server(&self, args: DBSArgs) -> Result<()> {
         use dragonball::vm::SevSecureChannel;
-        use sev::{cached_chain, launch::sev::*, session::Session};
 
         if args.boot_args.kernel_path.is_none() || args.boot_args.rootfs_args.rootfs.is_none() {
             bail!("kernel path or rootfs path cannot be None when creating the VM");
         }
 
-        // 使用目标机器的证书, 这里为预先缓存的
-        let chain = cached_chain::get().expect(
-            r#"could not find certificate chain
-            export with: sevctl export --full ~/.cache/amd-sev/chain"#,
-        );
+        println!("args is {:?}", args);
+        let security_info = args.security_info_args.unwrap();
+        let mut sev_config = aeb::kbs::GuestPreAttestationConfig {
+            proxy: security_info.guest_pre_attestation_proxy.unwrap(),
+            cert_chain_path: security_info.sev_cert_chain_path.unwrap(),
+            policy: security_info.sev_guest_policy,
+            ..Default::default()
+        };
 
-        let mut policy = Policy::default();
-        policy.flags.set(PolicyFlags::NO_DEBUG, true);
-        // policy.flags.set(PolicyFlags::ENCRYPTED_STATE, true);
-        let session = Session::try_from(policy).unwrap();
-        let start = Box::new(session.start(chain).unwrap());
+        println!("sev_config_bundle_request is {:?}", sev_config);
+
+        let (sev_attestation_id, start) = async_std::task::block_on(async {
+            aeb::setup_sevguest_pre_attestation(&sev_config).await
+        })?;
+
+        println!("attestation id is {:?}", sev_attestation_id);
 
         // configuration
         let vm_config = VmConfigInfo {
@@ -132,7 +136,7 @@ impl CliInstance {
         // boot source
         let boot_source_config = BootSourceConfig {
             // unwrap is safe because we have checked kernel_path in the beginning of run_vmm_server
-            kernel_path: args.boot_args.kernel_path.unwrap(),
+            kernel_path: args.boot_args.kernel_path.clone().unwrap(),
             initrd_path: args.boot_args.initrd_path.clone(),
             firmware_path: args.boot_args.firmware_path.clone(),
             boot_args: Some(args.boot_args.boot_args.clone()),
@@ -178,13 +182,33 @@ impl CliInstance {
         // start sev micro-vm
         let response = self.instance_start_sev().unwrap();
         let VmmData::SevMeasurement(msr) = response else { panic!()};
-        // println!("cmdline: {:?}", msr.cmdline.as_slice());
-        // println!("tdhob: {:?}", msr.tdhob.as_slice());
 
-        let session = session.verify(&[], msr.build, msr.measurement).unwrap();
+        let measurement = msr.measurement;
+        let _build = msr.build;
+        let cmdline = msr.cmdline;
+        let tdhob = msr.tdhob;
 
-        const CODE: &[u8; 16] = &[2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53];
-        let secret = session.secret(HeaderFlags::default(), CODE).unwrap();
+        sev_config.keyset = security_info.guest_pre_attestation_keyset.unwrap();
+        sev_config.launch_id = sev_attestation_id;
+        sev_config.firmware = args.boot_args.firmware_path;
+        sev_config.kernel = args.boot_args.kernel_path;
+        sev_config.initrd = args.boot_args.initrd_path;
+        sev_config.cmdline = cmdline;
+        sev_config.tdhob = tdhob;
+        sev_config.key_broker_secret_guid =
+            security_info.guest_pre_attestation_secret_guid.unwrap();
+        sev_config.key_broker_secret_type =
+            security_info.guest_pre_attestation_secret_type.unwrap();
+        sev_config.num_vcpu = args.create_args.vcpu;
+
+        println!("sev_config_secret_request is {:?}", sev_config);
+        sev_config.confidential_vm_type = "sev".to_string();
+
+        let secret = async_std::task::block_on(async {
+            aeb::sev_guest_pre_attestation(&sev_config, measurement).await
+        })?;
+
+        println!("secret is {:?}", secret);
 
         self.inejct_sev_secrets(SevSecretsInjection {
             secrets: vec![SecretWithGpa { secret, gpa: None }],
