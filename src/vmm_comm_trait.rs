@@ -9,7 +9,8 @@ use dragonball::{
         BlockDeviceConfigInfo, BootSourceConfig, VmmAction, VmmActionError, VmmData, VmmRequest,
         VmmResponse, VsockDeviceConfigInfo,
     },
-    vm::VmConfigInfo, sev::sev::SevSecretsInjection,
+    sev::sev::SevSecretsInjection,
+    vm::VmConfigInfo,
 };
 
 pub enum Request {
